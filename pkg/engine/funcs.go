@@ -19,11 +19,15 @@ package engine
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"reflect"
 	"strings"
 	"text/template"
 
 	"github.com/BurntSushi/toml"
 	"github.com/Masterminds/sprig/v3"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 )
 
@@ -48,13 +52,16 @@ func funcMap() template.FuncMap {
 
 	// Add some extra functionality
 	extra := template.FuncMap{
-		"toToml":        toTOML,
-		"toYaml":        toYAML,
-		"fromYaml":      fromYAML,
-		"fromYamlArray": fromYAMLArray,
-		"toJson":        toJSON,
-		"fromJson":      fromJSON,
-		"fromJsonArray": fromJSONArray,
+		"toToml":           toTOML,
+		"toYaml":           toYAML,
+		"fromYaml":         fromYAML,
+		"fromYamlArray":    fromYAMLArray,
+		"fromYamlDocument": fromYamlDocument,
+		"toJson":           toJSON,
+		"fromJson":         fromJSON,
+		"fromJsonArray":    fromJSONArray,
+		"filter":           filter,
+		"mustFilter":       mustFilter,
 
 		// This is a placeholder for the "include" function, which is
 		// late-bound to a template. By declaring it here, we preserve the
@@ -117,6 +124,86 @@ func fromYAMLArray(str string) []interface{} {
 		a = []interface{}{err.Error()}
 	}
 	return a
+}
+
+// fromYamlDocument converts a YAML document into a []map[string]interface{}.
+//
+// Unlike fromYaml, this is a gernal-purpose YAML parser, and will parse all
+// valid YAML documents. Additionally, because its intended use is within templates
+// it tolerates errors. It will insert the returned error message string as
+// the first and only item in the returned array.
+func fromYamlDocument(str string) []map[string]interface{} {
+	decoder := k8syaml.NewYAMLOrJSONDecoder(strings.NewReader(str), 256)
+	var li []map[string]interface{}
+	for {
+		m := map[string]interface{}{}
+		err := decoder.Decode(&m)
+		if err != nil {
+			if err == io.EOF {
+				return li
+			}
+			m["Error"] = err.Error()
+			return []map[string]interface{}{m}
+		}
+		li = append(li, m)
+	}
+}
+
+func doFilter(item interface{}, k string, v interface{}) bool {
+	rv := reflect.ValueOf(item)
+	if rv.Kind() == reflect.Map {
+		for _, key := range rv.MapKeys() {
+			if key.String() == k {
+				return reflect.DeepEqual(rv.MapIndex(key).Interface(), v)
+			}
+		}
+		return false
+	}
+
+	var el reflect.Value
+	if rv.Kind() == reflect.Ptr {
+		el = rv.Elem().FieldByName(k)
+	} else {
+		el = rv.FieldByName(k)
+	}
+	return reflect.DeepEqual(el.String(), v)
+}
+
+func filter(k, v interface{}, list interface{}) []interface{} {
+	l, err := mustFilter(k, v, list)
+	if err != nil {
+		panic(err)
+	}
+	return l
+}
+
+// mustFilter filters a list of items by a key/value pair.
+// The item could be a struct field or a map key/value.
+func mustFilter(k, v interface{}, list interface{}) ([]interface{}, error) {
+	tp := reflect.TypeOf(list).Kind()
+	switch tp {
+	case reflect.Slice, reflect.Array:
+		l2 := reflect.ValueOf(list)
+
+		l := l2.Len()
+		res := []interface{}{}
+		var item interface{}
+		for i := 0; i < l; i++ {
+			item = l2.Index(i).Interface()
+			if key := k.(string); doFilter(item, key, v) {
+				res = append(res, item)
+			}
+		}
+
+		return res, nil
+	case reflect.Map:
+		if key := k.(string); doFilter(list, key, v) {
+			return []interface{}{list}, nil
+		}
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("cannot filter on type %s", tp)
+	}
 }
 
 // toTOML takes an interface, marshals it to toml, and returns a string. It will

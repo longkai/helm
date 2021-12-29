@@ -24,6 +24,73 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestFilter(t *testing.T) {
+	liStructs := []*mysql{
+		{
+			Name: "apaas",
+			Port: 3306,
+			Host: "localhost",
+			User: "root",
+			Pass: "root",
+		},
+		{
+			Name: "pl",
+			Port: 3306,
+			Host: "localhost",
+			User: "root",
+			Pass: "root",
+		},
+	}
+
+	res, err := mustFilter("Name", "pl", liStructs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range res {
+		if v.(*mysql).Name != "pl" {
+			t.Fatalf("want pl got %v", v.(*mysql).Name)
+		}
+	}
+
+	li := []map[string]interface{}{
+		{
+			"Name": "apaas",
+			"Port": 3306,
+			"Host": "localhost",
+			"User": "root",
+			"Pass": "root",
+		},
+		{
+			"Name": "pl",
+			"Port": 3306,
+			"Host": "localhost",
+			"User": "root",
+			"Pass": "root",
+		},
+	}
+
+	res, err = mustFilter("Name", "apaas", li)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range res {
+		if val, ok := v.(map[string]interface{})["Name"]; ok {
+			if val.(string) != "apaas" {
+				t.Fatalf("want apaas, got %v", val)
+			}
+		}
+	}
+
+}
+
+type mysql struct {
+	Name string
+	Port int32
+	Host string
+	User string
+	Pass string
+}
+
 func TestFuncs(t *testing.T) {
 	//TODO write tests for failure cases
 	tests := []struct {
