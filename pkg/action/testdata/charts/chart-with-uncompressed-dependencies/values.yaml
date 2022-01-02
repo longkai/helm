@@ -182,7 +182,7 @@ ingress:
     tls: false
 
     ## If TLS is set to true, you must declare what secret will store the key/certificate for TLS
-    tlsSecret: wordpress.local-tls
+    tlsSecret: <omit for code codecc...>
 
     ## Ingress annotations done as key:value pairs
     ## If you're using kube-lego, you will want to add:
