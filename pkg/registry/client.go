@@ -89,12 +89,14 @@ func NewClient(options ...ClientOption) (*Client, error) {
 	if client.resolver == nil {
 		headers := http.Header{}
 		headers.Set("User-Agent", version.GetUserAgent())
-		opts := []auth.ResolverOption{auth.WithResolverHeaders(headers)}
-		resolver, err := client.authorizer.ResolverWithOpts(opts...)
-		if err != nil {
+		// opts := []auth.ResolverOption{auth.WithResolverHeaders(headers), }
+		// resolver, err := client.authorizer.ResolverWithOpts(opts...)
+		// if err != nil {
+		// return nil, err
+		// }
+		if err := client.WithResolver(true, true); err != nil {
 			return nil, err
 		}
-		client.resolver = resolver
 	}
 	if client.registryAuthorizer == nil {
 		client.registryAuthorizer = &registryauth.Client{
